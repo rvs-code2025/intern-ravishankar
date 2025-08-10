@@ -6,9 +6,11 @@ import { AppointmentsController } from './appointments.controller';
 import { Slot } from '../slots/entities/slot.entity';
 import { RescheduleAppointmentService } from './reschedule-appointment.service';
 import { AppointmentTimeService } from './appointment.time.service';
+import { Patient } from 'src/patients/entities/patient.entity';
+import { MailModule } from 'src/mail/mail.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Appointment, Slot])],
+  imports: [TypeOrmModule.forFeature([Appointment, Slot, Patient]), MailModule],
   providers: [
     AppointmentsService,
     RescheduleAppointmentService,

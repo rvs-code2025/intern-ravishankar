@@ -1,4 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  BeforeInsert,
+  BeforeUpdate,
+} from 'typeorm';
+import * as bcrypt from 'bcrypt';
+import { Exclude } from 'class-transformer';
 
 @Entity()
 export class Patient {
@@ -9,17 +17,29 @@ export class Patient {
   name: string;
 
   @Column()
-  password: string;
-
-  @Column({ unique: true })
   email: string;
 
-  @Column({ nullable: true })
+  @Column()
+  @Exclude()
+  password: string;
+
+  @Column()
   age: string;
 
-  @Column({ nullable: true })
+  @Column()
   gender: string;
 
   @Column({ default: 'patient' })
   role: string;
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  async hashPassword() {
+    if (this.password && !this.password.startsWith('$2b$')) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      const salt = await bcrypt.genSalt();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      this.password = await bcrypt.hash(this.password, salt);
+    }
+  }
 }

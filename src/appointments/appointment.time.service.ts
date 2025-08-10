@@ -46,12 +46,12 @@ export class AppointmentTimeService {
 
     // Booking allowed only between 8:00am-9:00am IST
     const startTime = moment.tz('Asia/Kolkata').hour(8).minute(0).toDate();
-    const endTime = moment.tz('Asia/Kolkata').hour(10).minute(0).toDate();
+    const endTime = moment.tz('Asia/Kolkata').hour(22).minute(0).toDate();
     const now = moment().tz('Asia/Kolkata').toDate();
 
     if (now < startTime || now > endTime) {
       throw new BadRequestException(
-        'Appointment can only be booked between 8:00am and 10:00am IST',
+        'Appointment can only be booked between 8:00am and 09:00am IST',
       );
     }
 

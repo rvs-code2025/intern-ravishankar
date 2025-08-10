@@ -12,6 +12,8 @@ import { AppointmentStatus } from './entities/enum.entity';
 import { Slot } from 'src/slots/entities/slot.entity';
 import { AppointmentTimeService } from './appointment.time.service';
 import * as moment from 'moment-timezone';
+import { MailService } from '../mail/mail.service';
+import { Patient } from 'src/patients/entities/patient.entity';
 
 @Injectable()
 export class AppointmentsService {
@@ -22,7 +24,12 @@ export class AppointmentsService {
     @InjectRepository(Slot)
     private readonly slotRepo: Repository<Slot>,
 
+    @InjectRepository(Patient)
+    private readonly patientRepo: Repository<Patient>,
+
     private readonly appointmentTimeService: AppointmentTimeService,
+
+    private readonly mailService: MailService, // ✅ injected mail service
   ) {}
 
   async bookAppointment(dto: BookAppointmentDto): Promise<Appointment> {
@@ -35,18 +42,14 @@ export class AppointmentsService {
 
     const isEmergency = dto.isEmergency ?? false;
 
-    // ✅ Check max booking limit
-    const bookingsCount = await this.appointmentRepo.count({
-      where: {
-        slot: { id: slot.id },
-        status: AppointmentStatus.BOOKED,
-      },
+    // ✅ Booking limit check
+    const existingAppointments = await this.appointmentRepo.count({
+      where: { slotId: slot.id },
     });
 
-    const limit = slot.doctor.maxBookingsPerSlot;
-    if (bookingsCount >= limit) {
+    if (existingAppointments >= slot.maxBookingsPerSlot) {
       throw new BadRequestException(
-        `Slot already booked (${bookingsCount}/${limit})`,
+        `Slot already full. Max bookings allowed: ${slot.maxBookingsPerSlot}`,
       );
     }
 
@@ -60,7 +63,7 @@ export class AppointmentsService {
       throw new BadRequestException('Invalid slot date format');
     }
 
-    // ✅ Prevent booking for past dates
+    // ✅ Past date check
     const today = moment().tz('Asia/Kolkata').startOf('day');
     const slotDate = parsedDate.clone().startOf('day');
     if (slotDate.isBefore(today)) {
@@ -76,7 +79,7 @@ export class AppointmentsService {
       );
     }
 
-    // ✅ Set expiration (9:00 AM IST on the slot date)
+    // ✅ Set expiration
     const expiresAt = parsedDate
       .tz('Asia/Kolkata')
       .hour(9)
@@ -84,17 +87,35 @@ export class AppointmentsService {
       .second(0)
       .toDate();
 
-    // ✅ Create and save appointment
+    // ✅ Create appointment
     const appointment = this.appointmentRepo.create({
       patientId: dto.patientId,
       slotId: dto.slotId,
       appointmentTime: dto.appointmentTime,
       isEmergency,
+      date: dto.date,
       status: AppointmentStatus.BOOKED,
       expiresAt,
     });
 
-    return this.appointmentRepo.save(appointment);
+    const savedAppointment = await this.appointmentRepo.save(appointment);
+
+    // ✅ Fetch patient info
+    const patient = await this.patientRepo.findOne({
+      where: { id: dto.patientId },
+    });
+
+    if (patient?.email && patient?.name) {
+      // ✅ Send email notification
+      await this.mailService.sendAppointmentBookedEmail(
+        patient.email,
+        patient.name,
+        slot.date,
+        `${slot.startTime} - ${slot.endTime}`,
+      );
+    }
+
+    return savedAppointment;
   }
 
   async cancelAppointment(id: string): Promise<Appointment> {
@@ -105,7 +126,6 @@ export class AppointmentsService {
     return this.appointmentRepo.save(appointment);
   }
 
-  // ✅ Mark as Attended via
   async markAsAttended(id: string): Promise<Appointment> {
     const appointment = await this.appointmentRepo.findOne({ where: { id } });
     if (!appointment) {

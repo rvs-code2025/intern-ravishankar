@@ -4,6 +4,7 @@ import { Slot } from './entities/slot.entity';
 import { Repository } from 'typeorm';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { Doctor } from '../doctors/entities/doctor.entity';
+import { UpdateSlotDto } from './dto/update.slot.dto';
 
 @Injectable()
 export class SlotsService {
@@ -28,8 +29,9 @@ export class SlotsService {
       date: createSlotDto.date,
       startTime: createSlotDto.startTime,
       endTime: createSlotDto.endTime,
-      doctor,
       isAvailable: true,
+      shift: createSlotDto.shift,
+      doctor,
     });
 
     return await this.slotRepository.save(slot);
@@ -51,9 +53,19 @@ export class SlotsService {
     });
   }
 
-  async markUnavailable(slotId: string) {
+  async update(id: string, dto: UpdateSlotDto): Promise<Slot> {
+    const slot = await this.slotRepository.preload({
+      id,
+      ...dto,
+    });
+    if (!slot) throw new NotFoundException('Slot not found');
+    return this.slotRepository.save(slot);
+  }
+
+  async markUnavailable(slotId: string): Promise<Slot> {
     const slot = await this.slotRepository.findOne({ where: { id: slotId } });
     if (!slot) throw new NotFoundException('Slot not found');
+    console.log('Max bookings from DB:', slot.maxBookingsPerSlot);
     slot.isAvailable = false;
     return this.slotRepository.save(slot);
   }

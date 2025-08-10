@@ -1,7 +1,7 @@
 import { IsNotEmpty, IsString, IsEnum } from 'class-validator';
 import { ShiftType } from '../entities/enums/shift.enum';
 
-export class CreateSlotDto {
+export class UpdateSlotDto {
   @IsNotEmpty()
   @IsString()
   date: string;
