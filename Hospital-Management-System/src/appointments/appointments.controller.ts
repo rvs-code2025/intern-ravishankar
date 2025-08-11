@@ -1,18 +1,16 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Get,
-  Param,
-  Patch,
-  Query,
-} from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Patch } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
+import { RescheduleAppointmentService } from './reschedule-appointment.service';
 import { BookAppointmentDto } from './dto/book-appointment.dto';
+import { RescheduleAppointmentDto } from './dto/reschedule.appointment.dto';
+import { Appointment } from './entities/appointment.entity';
 
 @Controller('appointments')
 export class AppointmentsController {
-  constructor(private readonly appointmentService: AppointmentsService) {}
+  constructor(
+    private readonly appointmentService: AppointmentsService,
+    private readonly rescheduleAppointmentService: RescheduleAppointmentService,
+  ) {}
 
   @Post('book')
   book(@Body() dto: BookAppointmentDto) {
@@ -35,7 +33,16 @@ export class AppointmentsController {
   }
 
   @Patch('/reschedule')
-  reschedule(@Param('id') id: string, @Query('newSlotId') newSlotId: string) {
-    return this.appointmentService.rescheduleAppointment(id, newSlotId);
+  reschedule(@Param('id') id: string, @Body() dto: RescheduleAppointmentDto) {
+    return this.rescheduleAppointmentService.rescheduleAppointment(
+      id,
+      dto.newSlotId,
+    );
+  }
+
+  // ✅ Mark as Attended patient
+  @Patch(':id/attend')
+  markAsAttended(@Param('id') id: string): Promise<Appointment> {
+    return this.appointmentService.markAsAttended(id);
   }
 }

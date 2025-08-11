@@ -9,6 +9,6 @@ export class RegisterPatinetDto {
   email: string;
 
   @IsNotEmpty()
-  @MinLength(9)
+  @MinLength(5)
   password: string;
 }

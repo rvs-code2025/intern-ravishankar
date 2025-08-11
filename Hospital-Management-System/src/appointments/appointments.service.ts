@@ -10,8 +10,10 @@ import { Appointment } from './entities/appointment.entity';
 import { BookAppointmentDto } from './dto/book-appointment.dto';
 import { AppointmentStatus } from './entities/enum.entity';
 import { Slot } from 'src/slots/entities/slot.entity';
+import { AppointmentTimeService } from './appointment.time.service';
 import * as moment from 'moment-timezone';
-import { Cron } from '@nestjs/schedule';
+import { MailService } from '../mail/mail.service';
+import { Patient } from 'src/patients/entities/patient.entity';
 
 @Injectable()
 export class AppointmentsService {
@@ -21,9 +23,15 @@ export class AppointmentsService {
 
     @InjectRepository(Slot)
     private readonly slotRepo: Repository<Slot>,
+
+    @InjectRepository(Patient)
+    private readonly patientRepo: Repository<Patient>,
+
+    private readonly appointmentTimeService: AppointmentTimeService,
+
+    private readonly mailService: MailService, // ✅ injected mail service
   ) {}
 
-  // ✅ Book appointment (Mon–Fri normal, Sat/Sun emergency only)
   async bookAppointment(dto: BookAppointmentDto): Promise<Appointment> {
     const slot = await this.slotRepo.findOne({
       where: { id: dto.slotId },
@@ -32,21 +40,20 @@ export class AppointmentsService {
 
     if (!slot) throw new NotFoundException('Slot not found');
 
-    const bookingsCount = await this.appointmentRepo.count({
-      where: {
-        slot: { id: slot.id },
-        status: AppointmentStatus.BOOKED,
-      },
+    const isEmergency = dto.isEmergency ?? false;
+
+    // ✅ Booking limit check
+    const existingAppointments = await this.appointmentRepo.count({
+      where: { slotId: slot.id },
     });
 
-    const limit = slot.doctor.maxBookingsPerSlot;
-    if (bookingsCount >= limit) {
+    if (existingAppointments >= slot.maxBookingsPerSlot) {
       throw new BadRequestException(
-        `Slot already booked (${bookingsCount}/${limit})`,
+        `Slot already full. Max bookings allowed: ${slot.maxBookingsPerSlot}`,
       );
     }
 
-    // Parse slot date
+    // ✅ Parse slot date
     let parsedDate: moment.Moment;
     if (moment(slot.date, 'YYYY-MM-DD', true).isValid()) {
       parsedDate = moment(slot.date, 'YYYY-MM-DD');
@@ -56,40 +63,81 @@ export class AppointmentsService {
       throw new BadRequestException('Invalid slot date format');
     }
 
-    // Check if weekend and handle emergency case
-    const day = parsedDate.format('dddd'); // e.g., "Saturday"
-    const isWeekend = ['Saturday', 'Sunday'].includes(day);
-    const isEmergency = dto.isEmergency ?? false;
+    // ✅ Past date check
+    const today = moment().tz('Asia/Kolkata').startOf('day');
+    const slotDate = parsedDate.clone().startOf('day');
+    if (slotDate.isBefore(today)) {
+      throw new BadRequestException('Cannot book appointment for a past date');
+    }
 
-    if (isWeekend && !isEmergency) {
-      throw new BadRequestException(
-        'Only emergency appointments are allowed on weekends',
+    // ✅ Validate appointmentTime
+    if (dto.appointmentTime) {
+      await this.appointmentTimeService.validateAppointmentTime(
+        slot,
+        dto.appointmentTime,
+        isEmergency,
       );
     }
 
-    // Booking allowed only between 8:00am-16:00am IST
-    const startTime = parsedDate.tz('Asia/Kolkata').hour(8).minute(0).toDate();
-    const endTime = parsedDate.tz('Asia/Kolkata').hour(16).minute(0).toDate();
-    const now = moment().tz('Asia/Kolkata').toDate();
+    // ✅ Set expiration
+    const expiresAt = parsedDate
+      .tz('Asia/Kolkata')
+      .hour(9)
+      .minute(0)
+      .second(0)
+      .toDate();
 
-    if (now < startTime || now > endTime) {
-      throw new BadRequestException(
-        'Appointment can only be booked between 8:00am and 16:00am IST',
-      );
-    }
-
+    // ✅ Create appointment
     const appointment = this.appointmentRepo.create({
-      slot,
-      patient: { id: dto.patientId },
-      status: AppointmentStatus.BOOKED,
+      patientId: dto.patientId,
+      slotId: dto.slotId,
+      appointmentTime: dto.appointmentTime,
       isEmergency,
-      expiresAt: endTime,
+      date: dto.date,
+      status: AppointmentStatus.BOOKED,
+      expiresAt,
     });
 
+    const savedAppointment = await this.appointmentRepo.save(appointment);
+
+    // ✅ Fetch patient info
+    const patient = await this.patientRepo.findOne({
+      where: { id: dto.patientId },
+    });
+
+    // ✅ Send email notification
+    if (patient?.email && patient?.name) {
+      await this.mailService.sendAppointmentBookedEmail(
+        patient.email,
+        patient.name,
+        slot.doctor?.name,
+        slot.date,
+        `${slot.startTime} - ${slot.endTime}`,
+      );
+    }
+
+    return savedAppointment;
+  }
+
+  async cancelAppointment(id: string): Promise<Appointment> {
+    const appointment = await this.appointmentRepo.findOne({ where: { id } });
+    if (!appointment) throw new NotFoundException('Appointment not found');
+
+    appointment.status = AppointmentStatus.CANCELLED;
     return this.appointmentRepo.save(appointment);
   }
 
-  // ✅ Get all appointments of a patient
+  async markAsAttended(id: string): Promise<Appointment> {
+    const appointment = await this.appointmentRepo.findOne({ where: { id } });
+    if (!appointment) {
+      throw new NotFoundException('Appointment not found');
+    }
+
+    appointment.status = AppointmentStatus.ATTENDED;
+    appointment.attendedAt = new Date();
+    return this.appointmentRepo.save(appointment);
+  }
+
   async getPatientAppointments(patientId: string): Promise<Appointment[]> {
     try {
       return await this.appointmentRepo.find({
@@ -103,7 +151,6 @@ export class AppointmentsService {
     }
   }
 
-  // ✅ Get all appointments
   async getAllAppointments(): Promise<Appointment[]> {
     try {
       return await this.appointmentRepo.find({
@@ -116,60 +163,5 @@ export class AppointmentsService {
           : 'Failed to fetch all appointments',
       );
     }
-  }
-
-  // ✅ Cancel appointment
-  async cancelAppointment(id: string): Promise<Appointment> {
-    const appointment = await this.appointmentRepo.findOne({ where: { id } });
-    if (!appointment) throw new NotFoundException('Appointment not found');
-
-    appointment.status = AppointmentStatus.CANCELLED;
-    return this.appointmentRepo.save(appointment);
-  }
-
-  // ✅ Reschedule appointment
-  async rescheduleAppointment(
-    id: string,
-    newSlotId: string,
-  ): Promise<Appointment> {
-    const appointment = await this.appointmentRepo.findOne({ where: { id } });
-    if (!appointment) throw new NotFoundException('Appointment not found');
-
-    const newSlot = await this.slotRepo.findOne({
-      where: { id: newSlotId },
-      relations: ['doctor'],
-    });
-
-    if (!newSlot) throw new NotFoundException('New slot not found');
-
-    let parsedDate: moment.Moment;
-    if (moment(newSlot.date, 'YYYY-MM-DD', true).isValid()) {
-      parsedDate = moment(newSlot.date, 'YYYY-MM-DD');
-    } else if (moment(newSlot.date, 'DD-MM-YYYY', true).isValid()) {
-      parsedDate = moment(newSlot.date, 'DD-MM-YYYY');
-    } else {
-      throw new BadRequestException('Invalid new slot date format');
-    }
-
-    const endTime = parsedDate.tz('Asia/Kolkata').hour(16).minute(0).toDate();
-
-    appointment.slot = newSlot;
-    appointment.status = AppointmentStatus.RESCHEDULED;
-    appointment.expiresAt = endTime;
-
-    return this.appointmentRepo.save(appointment);
-  }
-
-  // ✅ Auto-expire appointments after 16:00am
-  @Cron('*/5 * * * *') // every 5 minutes
-  async autoExpireAppointments() {
-    const now = new Date();
-    await this.appointmentRepo
-      .createQueryBuilder()
-      .update(Appointment)
-      .set({ status: AppointmentStatus.EXPIRED })
-      .where('expiresAt < :now', { now })
-      .andWhere('status = :status', { status: AppointmentStatus.BOOKED })
-      .execute();
   }
 }

@@ -26,9 +26,6 @@ export class Doctor {
   @Column({ nullable: true })
   gender: string;
 
-  @Column({ default: 3 })
-  maxBookingsPerSlot: number;
-
   @OneToMany(() => Slot, (slot) => slot.doctor)
   slots: Slot[]; // ✅ This line solves the error
 }

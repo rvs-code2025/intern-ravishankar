@@ -4,6 +4,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   JoinColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Patient } from '../../patients/entities/patient.entity';
 import { Slot } from '../../slots/entities/slot.entity';
@@ -13,6 +14,9 @@ import { AppointmentStatus } from './enum.entity';
 export class Appointment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ type: 'date', nullable: true })
+  date: string;
 
   @Column()
   patientId: string;
@@ -33,6 +37,12 @@ export class Appointment {
 
   @Column({ type: 'timestamp', nullable: true })
   expiresAt: Date;
+
+  @Column({ nullable: true })
+  appointmentTime: string;
+
+  @UpdateDateColumn({ nullable: true })
+  attendedAt?: Date;
 
   @Column({
     type: 'enum',

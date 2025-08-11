@@ -24,6 +24,19 @@ export class PatientsService {
     return this.patientRepo.save(newPatient);
   }
 
+  async update(id: string, updateDto: UpdatePatientDto): Promise<Patient> {
+    const patient = await this.patientRepo.preload({
+      id,
+      ...updateDto,
+    });
+
+    if (!patient) {
+      throw new NotFoundException(`Patient with ID ${id} not found`);
+    }
+
+    return this.patientRepo.save(patient); // 🔁 yahan `@BeforeUpdate()` chalega
+  }
+
   async getpatientProfile(userId: string) {
     return this.patientRepo.findOne({
       where: { id: userId },
@@ -39,13 +52,6 @@ export class PatientsService {
 
   async findByEmail(email: string): Promise<Patient | null> {
     return this.patientRepo.findOne({ where: { email } });
-  }
-
-  async update(id: string, dto: UpdatePatientDto) {
-    const patient = await this.patientRepo.findOne({ where: { id } });
-    if (!patient) throw new NotFoundException('patient not found');
-    Object.assign(patient, dto);
-    return this.patientRepo.save(patient);
   }
 
   async findAll(): Promise<Patient[]> {

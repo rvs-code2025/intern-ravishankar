@@ -3,7 +3,6 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDoctorDto } from './dto/register.doctro';
 import { RegisterPatinetDto } from './dto/register.patient';
-import { RegisterAdminDto } from './dto/register.admin';
 import { DoctorsService } from '../doctors/doctors.service';
 import { PatientsService } from '../patients/patients.service';
 import { jwtStrategy } from '../auth/jwt.strategy';
@@ -28,11 +27,6 @@ export class AuthController {
 
   @Post('register/patient')
   async registerPatient(@Body() dto: RegisterPatinetDto) {
-    return this.patientService.register(dto);
-  }
-
-  @Post('register/admin')
-  async registerAdmin(@Body() dto: RegisterAdminDto) {
     return this.patientService.register(dto);
   }
 
