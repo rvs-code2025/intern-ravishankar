@@ -10,6 +10,7 @@ import { SlotsModule } from './slots/slots.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { MailService } from './mail/mail.service';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -49,5 +50,6 @@ import { MailService } from './mail/mail.service';
   ],
   providers: [MailService],
   exports: [MailService],
+  controllers: [AppController],
 })
 export class AppModule {}
