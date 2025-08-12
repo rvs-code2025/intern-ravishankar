@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Hospital Management System" width="140" />
+  <img src="/logo.png" alt="Hospital Management System" width="140" />
 </p>
 
 
